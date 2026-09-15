@@ -30,7 +30,7 @@ DeepSeek Harness（DSH）远程会话的**附件粘贴附加插件**：把 Windo
 ```bash
 pnpm install --frozen-lockfile
 pnpm run build && pnpm run test:pack      # 产出 pack/shxtmaker-dsh-remote-attachments-0.1.0.tgz
-pnpm --dir <profile-dir> add file:<本仓库绝对路径>/pack/shxtmaker-dsh-remote-attachments-0.1.0.tgz
+pnpm --dir <profile-dir> add file:<tarball 绝对路径>
 ```
 
 本包通过 `cordis.patch.yml` 挂载：host 半区以 **fetch 形状载体**安装 `__DSH_FILE_UPLOAD__`
@@ -41,22 +41,25 @@ pnpm --dir <profile-dir> add file:<本仓库绝对路径>/pack/shxtmaker-dsh-rem
 **不要手改** `lib/client.js`：它由 `scripts/build-client-bundle.mjs` 生成。client-modules 的批次是各包
 `client.js` 的**原始字节拼接**，入口顶层出现任何 `import`/`export` 都会让整批解析失败。
 
-## 目录结构
+## 目录结构（包内）
 
 ```text
-.
-├── src/host.ts                    包的 `.` 入口（host 半区）
-├── src/host/                      host 半区实现（含上传承载）
-├── src/client/                    client 半区（桥、接收端、握手、草稿适配器、组合）
-├── src/shared/                    两端共用：protocol/limits/capabilities + wire/ 冻结 codec
-├── scripts/                       构建、清理、打包卫生扫描、线协议门禁
-├── test/unit/                     单元测试与语料运行器
-├── tests/fixtures/                真实 Harness/Chromium 夹具与各任务门禁
-├── tests/interop/                 C# 生产协调器的对端驱动
-├── docs/                          兼容/停用策略与 Linux 验证报告
-├── schemas/remote-attachments/v1/ 线协议 v1 冻结语料（schema + golden + malicious + expected.json）
-└── cordis.patch.yml               单一 Cordis 行：id=remote-attachments
+src/host.ts                     包的 `.` 入口（host 半区）
+src/host/index.ts               host 半区实现（含上传承载）
+src/client/                     client 半区：桥、接收端、握手、草稿适配器、组合
+src/shared/                     两端共用：protocol / limits / capabilities
+src/shared/wire/                冻结 codec（session / messages / replay-cache / sha256 / base64）
+scripts/                        构建、清理、打包卫生扫描、线协议门禁
+test/unit/                      单元测试与语料运行器
+tests/fixtures/                 真实 Harness/Chromium 夹具与各任务门禁
+tests/interop/                  C# 生产协调器的对端驱动
+docs/                           兼容/停用策略与 Linux 验证报告
+cordis.patch.yml                单一 Cordis 行：id=remote-attachments
 ```
+
+线协议 v1 的冻结语料位于仓库的 `schemas/remote-attachments/v1/`
+（`schema.json` + `golden/` + `malicious/` + `expected.json`）：它与 C# 生产 codec 共用同一份期望，
+且不随包发布（`package.json` 的 `files` 只含运行期产物）。
 
 ## 命令
 
@@ -64,7 +67,7 @@ pnpm --dir <profile-dir> add file:<本仓库绝对路径>/pack/shxtmaker-dsh-rem
 pnpm run typecheck      # tsc --noEmit
 pnpm run build          # tsc（ESM）→ CJS → 经典包裹产物 lib/client.js
 pnpm run test:unit      # node --test test/unit/**
-pnpm run test:wire      # 线协议语料门禁（读 schemas/remote-attachments/v1，写 artifacts/）
+pnpm run test:wire      # 线协议语料门禁（读 schemas/remote-attachments/v1）
 pnpm run test:pack      # 生成真实 tarball 并逐条核对内容（P01–P08，含卫生扫描）
 pnpm run verify         # typecheck + build + test:unit + test:pack
 ```
@@ -77,48 +80,29 @@ pnpm run verify         # typecheck + build + test:unit + test:pack
 （`artifacts/fixture`，可用 `DSH_ATTACH_FIXTURE_ROOT` 覆盖）内运行，**绝不触碰** `$HOME/.dsh`；
 `fixture:down` 只在双重确认（命令行含 profile 名 + `DSH_HOME` 指向夹具）后停进程。
 
-`tests/interop/d18-interop-driver.mjs` 是 C# 生产协调器的对端驱动，需配合
-[`shxtmaker/dsh-windows-launcher`](https://github.com/shxtmaker/dsh-windows-launcher) 的
-`DshLauncher.Core.Tests`（`-trait interop=production`）运行，本仓库单独无法完成该用例。
+`tests/interop/d18-interop-driver.mjs` 是 C# 生产协调器的对端驱动，由
+`DshLauncher.Core.Tests`（`-trait interop=production`）驱动运行，需与本仓库同工作区使用。
 
 ## 状态
 
-- **线协议 v1 已冻结**：11 类消息、`operationId==batchId`、`fileId` 绑定 target/documentEpoch/composerEpoch/
-  sessionId/batchId、`seq` 每文件从 0、最多 2 块在途、256 KiB 块；36 个协议拒绝码与 19 个结果码分工不混用。
+- **线协议 v1 已冻结**：11 类消息、`operationId==batchId`、`fileId` 绑定
+  `targetId+documentEpoch+composerEpoch+sessionId+batchId`、`seq` 每文件从 0、最多 2 块在途、256 KiB 块；
+  36 个协议拒绝码与 19 个结果码分工不混用（四阶段：native-capture / protocol-transfer / draft-import / remote-upload）。
 - **三态语义**：`transport{idle,buffering,buffered}` / `draft{none,staged,failed,partial}` /
   `upload{none,harness-owned}` —— 协议里**没有** `ready`/`uploaded`；`staged` 只表示对端草稿已接收字节，
   不保证 Harness 侧 receipt 仍有效。
-- **能力与降级**：未知 hook ⇒ `capability-conflict` 且不覆盖不贴牌；远端不可用 ⇒ `unavailable`/`capability-disabled`
-  且**不静默回退裸 `/api`**；停用/恢复与 `ReloadRequired` 可判定；配对、心跳、设备库不受影响。
-- **Windows 实机路径未验证**（WPF/WebView2/Win32 端到端为 WindowsPending）；Linux 侧证据见
-  [`docs/D24-LINUX-REPORT.md`](docs/D24-LINUX-REPORT.md)，兼容与停用策略见
-  [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)。
+- **能力与降级**：未知 hook ⇒ `capability-conflict` 且不覆盖不贴牌；远端不可用 ⇒
+  `unavailable`/`capability-disabled` 且**不静默回退裸 `/api`**；停用/恢复与 `ReloadRequired` 可判定；
+  配对、心跳、设备库不受影响。
+- **限额**：单文件 20 MiB、单批 10 项 / 50 MiB、截图 4000 万像素、单目标暂存 100 MiB、并发目标 2；
+  握手 5 s、单块 ACK 10 s、`file-end`→`import-result` 30 s、批次空闲 60 s；重放缓存 64 条 / 120 s。
 
-## 来源与与上游副本的关系
+## 已验与未验
 
-本仓库从 [`shxtmaker/dsh-windows-launcher`](https://github.com/shxtmaker/dsh-windows-launcher) 的
-**v2.1.0**（标签提交 `676f6a0`）提取：
-
-- 插件本体 = 该仓库 `plugins/dsh-remote-attachments/`（85 个已跟踪文件）；
-- `schemas/remote-attachments/v1/` = 该仓库同名目录（86 个文件，逐字节相同）——原仓库中该语料位于仓库根，
-  被插件单测与门禁共同读取，独立仓库必须自带。
-
-**为扁平化与可移植做的改动**：
-
-1. `scripts/wire-contract-gates.mjs`：`repoRoot` 由 `resolve(projectRoot,'..','..')` 改为 `projectRoot`。
-2. `test/unit/wire-corpus-support.mjs`：语料目录由 `'../../../..'` 改为 `'../..'`。
-3. `tests/fixtures/*.mjs`（14 个）与 `tests/interop/d18-interop-driver.mjs`：`repoRoot` 由
-   `resolve(pluginRoot,'../..')` 改为 `pluginRoot`。
-4. `tests/fixtures/*.sh`（6 个）：`repo_root` 由 `$(cd "$plugin_root/../.." && pwd)` 改为
-   **向上查找含 `schemas/remote-attachments/v1` 的最近祖先**（独立仓库与 launcher 仓库内两种布局都成立）。
-5. `tests/fixtures/setup.sh`：tarball 由 `$repo_root/$tarball_rel` 改为 `$plugin_root/pack/$(basename …)`。
-6. 排除 `tests/fixtures/.d20-probe-tmp.mjs`（遗留临时探针，含硬编码本机绝对路径）。
-7. `README.md` 为独立项目说明；**上游副本已在 `aecb3f3` 同步更正**为同一包的实际状态
-   （两份文本描述同一包，仅个别措辞因布局与来源说明不同而异）。
-
-> 上述第 1–5 项本身即布局无关，可反向合入上游仓库（那会改变已发布候选的源码树指纹，
-> 需重跑 D10/D12/D18/D19–D23 相关门禁）。第 7 项会使本仓库构建的 tarball 与上游 tarball
-> 在 **README 字节**上不同（文件数与其余内容相同）。
+- **Linux（已实跑）**：插件单测、线协议门禁（86 样本 + 332 敌意变异）、打包判据、真实 Harness＋全家桶
+  夹具、`DshLauncher.Core.Tests` 的 C#↔浏览器生产互操作用例。证据见 `docs/D24-LINUX-REPORT.md`。
+- **Windows 实机（未验，WindowsPending）**：WPF/WebView2/Win32 端到端、安装与升级矩阵尚未执行；
+  相关待验清单见仓库 `docs/remote-file-paste/execution/`。不得据此宣称 Windows 已通过。
 
 ## 许可
 
