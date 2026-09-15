@@ -113,7 +113,8 @@ pnpm run verify         # typecheck + build + test:unit + test:pack
    **向上查找含 `schemas/remote-attachments/v1` 的最近祖先**（独立仓库与 launcher 仓库内两种布局都成立）。
 5. `tests/fixtures/setup.sh`：tarball 由 `$repo_root/$tarball_rel` 改为 `$plugin_root/pack/$(basename …)`。
 6. 排除 `tests/fixtures/.d20-probe-tmp.mjs`（遗留临时探针，含硬编码本机绝对路径）。
-7. 本文件（`README.md`）已更新为独立项目说明；上游副本中的同名文件停留在 D03 阶段的描述。
+7. `README.md` 为独立项目说明；**上游副本已在 `aecb3f3` 同步更正**为同一包的实际状态
+   （两份文本描述同一包，仅个别措辞因布局与来源说明不同而异）。
 
 > 上述第 1–5 项本身即布局无关，可反向合入上游仓库（那会改变已发布候选的源码树指纹，
 > 需重跑 D10/D12/D18/D19–D23 相关门禁）。第 7 项会使本仓库构建的 tarball 与上游 tarball
