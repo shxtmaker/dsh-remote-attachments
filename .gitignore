@@ -1,0 +1,22 @@
+# 构建产物（由 pnpm run build 生成，勿入库）
+lib/
+
+# 本地打包暂存（pnpm run test:pack 生成）
+pack/
+
+# 依赖
+node_modules/
+
+# 夹具与门禁证据（私有 DSH_HOME、Chromium 采样、门禁 JSON）
+artifacts/
+
+# 本地诊断
+*.log
+*.tmp
+packages/
+.scratch/
+
+# 操作系统元数据
+.DS_Store
+Thumbs.db
+Desktop.ini
